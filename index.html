@@ -1,85 +1,82 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <title>YouTube Playlist Viewer — Debug</title>
+  <meta charset="UTF-8" />
+  <title>YouTube Playlist Viewer</title>
   <style>
-    body{font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", "メイリオ"; padding:18px}
-    #videos{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:12px}
-    .video-item{cursor:pointer;border:1px solid #eee;padding:8px;border-radius:8px}
-    .error{color:#b00020;background:#ffeeee;padding:12px;border-radius:6px}
-    pre{white-space:pre-wrap;background:#f7f7f7;padding:10px;border-radius:6px;overflow:auto}
-    iframe{width:100%;max-width:640px;height:360px;margin-top:12px}
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #videos { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-top: 20px; }
+    .video-item { cursor: pointer; border: 1px solid #ddd; padding: 10px; border-radius: 8px; transition: transform 0.1s; }
+    .video-item:hover { transform: scale(1.02); }
+    .video-item img { width: 100%; border-radius: 6px; }
+    iframe { width: 100%; max-width: 560px; height: 315px; margin-top: 20px; }
   </style>
 </head>
 <body>
-  <h2>YouTube Playlist Viewer — Debug</h2>
-  <div id="player"></div>
-  <div id="status">読み込み中...</div>
-  <div id="videos"></div>
 
-  <script>
-    const apiKey = "AIzaSyAxk1YpQSe-qDtFUSUmnjnduanag41Mlyk"; // ← 公開中のAPIキー（注意）
-    const playlistId = "PLExT6MVBKs2BOFn2KPX6FYLQ8btIpOZ5l";
+<h2>再生リストビューアー</h2>
+<div id="player"></div>
+<div id="videos">読み込み中...</div>
 
-    const container = document.getElementById("videos");
-    const player = document.getElementById("player");
-    const status = document.getElementById("status");
+<script>
+  const apiKey = "AIzaSyAxk1YpQSe-qDtFUSUmnjnduanag41Mlyk"; // ★ Your API Key
+  const playlistId = "PLExT6MVBKs2BOFn2KPX6FYLQ8btIpOZ5l";   // ★ Your Playlist ID
 
-    async function fetchAllVideos(pageToken = "", allItems = []) {
-      const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${playlistId}&key=${apiKey}&pageToken=${pageToken}`;
-      const res = await fetch(url);
-      const data = await res.json();
+  const container = document.getElementById("videos");
+  const player = document.getElementById("player");
 
-      // ネットワーク/HTTPエラーはここで拾う
-      if (!res.ok) {
-        const err = new Error(data && data.error && data.error.message ? data.error.message : ("HTTP " + res.status));
-        err.details = data;
-        throw err;
-      }
+  async function fetchAllVideos(pageToken = "", allItems = []) {
+    const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${playlistId}&key=${apiKey}&pageToken=${pageToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
 
-      if (data.items) allItems = allItems.concat(data.items);
-      if (data.nextPageToken) return fetchAllVideos(data.nextPageToken, allItems);
-      return allItems;
-    }
+    if (!res.ok) throw new Error(data.error?.message || "API fetch error");
 
-    (async () => {
-      try {
-        const items = await fetchAllVideos();
-        status.innerText = `取得成功: ${items.length} 件`;
-        container.innerHTML = "";
-        items.forEach(item => {
-          const title = item.snippet.title;
-          const videoId = item.snippet.resourceId?.videoId || "";
-          const thumbnail = item.snippet.thumbnails?.medium?.url || "";
+    if (data.items) allItems = allItems.concat(data.items);
+    if (data.nextPageToken) return fetchAllVideos(data.nextPageToken, allItems);
+    return allItems;
+  }
 
-          const div = document.createElement("div");
-          div.className = "video-item";
-          div.innerHTML = `
-            <img src="${thumbnail}" alt="${title}" style="width:100%;border-radius:6px" />
-            <p style="margin:6px 0;font-size:14px">${title}</p>
+  fetchAllVideos()
+    .then(items => {
+      container.innerHTML = "";
+
+      items.forEach(item => {
+        const title = item.snippet.title;
+        const videoId = item.snippet.resourceId?.videoId || "";
+        if (!videoId) return; // videoId が無ければスキップ
+
+        const thumbnail = item.snippet.thumbnails?.medium?.url || 
+                          item.snippet.thumbnails?.default?.url || 
+                          ""; // サムネイルが無い場合もエラー回避
+
+        const div = document.createElement("div");
+        div.className = "video-item";
+
+        div.innerHTML = `
+          <img src="${thumbnail}" alt="${title}" />
+          <p>${title}</p>
+        `;
+
+        div.onclick = () => {
+          player.innerHTML = `
+            <iframe
+              src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&autoplay=1"
+              allow="autoplay; encrypted-media"
+              allowfullscreen
+            ></iframe>
           `;
-          div.onclick = () => {
-            player.innerHTML = `
-              <iframe src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&autoplay=1"
-                      allow="autoplay; encrypted-media" allowfullscreen></iframe>
-            `;
-            window.scrollTo({top:0,behavior:'smooth'});
-          };
-          container.appendChild(div);
-        });
-      } catch (err) {
-        // 画面表示とコンソールに詳細出力
-        const msg = err && err.message ? err.message : String(err);
-        status.innerHTML = `<div class="error"><strong>APIエラー:</strong> ${msg}</div>`;
-        if (err.details) {
-          const pre = document.createElement("pre");
-          pre.textContent = JSON.stringify(err.details, null, 2);
-          status.appendChild(pre);
-        }
-        console.error("YouTube API error (details):", err);
-      }
-    })();
-  </script>
+          window.scrollTo({top:0,behavior:'smooth'});
+        };
+
+        container.appendChild(div);
+      });
+    })
+    .catch(err => {
+      container.innerText = "APIエラーが発生しました: " + err.message;
+      console.error(err);
+    });
+</script>
+
 </body>
 </html>
